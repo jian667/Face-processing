@@ -3,9 +3,9 @@ import pandas as pd
 import dlib
 import numpy as np
 import torch
-from torch import nn
 import h5py
 import cv2
+from torch import nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
 import trimesh
@@ -25,12 +25,12 @@ class PCAModel:
         self.pc = pc
         self.std = std
 
-def detect_landmark(img) -> np.ndarray:
+def detect_landmark(image) -> np.ndarray:
     """
     Detect facial landmarks in an image using dlib.
 
     Parameters:
-    - img: The input image.
+    - image: The input image.
 
     Returns:
     - np.ndarray: Numpy array containing (x, y)-coordinates of facial landmarks.
@@ -38,10 +38,9 @@ def detect_landmark(img) -> np.ndarray:
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
-    dets = detector(img, 1)
-    for k, d in enumerate(dets):
-        shape = predictor(img, d)
-        return shape_to_np(shape)
+    dets = detector(image, 1)
+    shape = predictor(image, dets[0])
+    return shape_to_np(shape)
 
 def shape_to_np(shape, dtype: str = "int") -> np.ndarray:
     """
@@ -59,7 +58,8 @@ def shape_to_np(shape, dtype: str = "int") -> np.ndarray:
         coords[i] = (shape.part(i).x, shape.part(i).y)
     return coords
 
-def load_bfm_model(file_path: str, n_id: int, n_exp: int) -> Tuple[PCAModel, PCAModel, PCAModel, torch.Tensor]:
+def load_bfm_model(file_path: str, n_id: int, n_exp: int) \
+    -> Tuple[PCAModel, PCAModel, PCAModel, torch.Tensor]:
     """
     Load the Basel Face Model (BFM) from an HDF5 file.
 
@@ -69,7 +69,8 @@ def load_bfm_model(file_path: str, n_id: int, n_exp: int) -> Tuple[PCAModel, PCA
     - n_exp (int): The number of expression components to retain.
 
     Returns:
-    - Tuple[PCAModel, PCAModel, PCAModel, torch.Tensor]: Tuple containing shape, color, expression PCA models, and triangles.
+    - Tuple[PCAModel, PCAModel, PCAModel, torch.Tensor]: Tuple containing shape, color, 
+    expression PCA models, and triangles.
     """
     bfm = h5py.File(file_path, 'r')
 
@@ -95,11 +96,10 @@ def load_pca_model(bfm_group, model_name: str, n_id: int) -> PCAModel:
     """
     mean = torch.from_numpy(np.asarray(bfm_group[f'{model_name}/model/mean'], dtype=np.float32))
     pc = torch.from_numpy(np.asarray(bfm_group[f'{model_name}/model/pcaBasis'], dtype=np.float32))
-    std = torch.sqrt(torch.from_numpy(np.asarray(bfm_group[f'{model_name}/model/pcaVariance'], dtype=np.float32)))
-    
+    std = torch.sqrt(torch.from_numpy(np.asarray(bfm_group[f'{model_name}/model/pcaVariance'], \
+                                                 dtype=np.float32)))
     pc = pc[:, :n_id]
     std = std[:n_id]
-    
     return PCAModel(mean, pc, std)
 # (pca.mean + torch.sum(coeff[0] * pca.std.view(1, -1) * pca.pc, dim=1)).view(1, -1, 3)
 
@@ -128,11 +128,11 @@ def rotate_euler(x, rot):
     roll_s = torch.sin(roll)
 
     # Rotation matrices for each axis
-    Roll = torch.stack([ones, zeros, zeros,
+    roll = torch.stack([ones, zeros, zeros,
                         zeros, roll_c, -roll_s,
                         zeros, roll_s, roll_c], dim=1).view(-1, 3, 3)
 
-    Pitch = torch.stack([pitch_c, zeros, pitch_s,
+    pitch = torch.stack([pitch_c, zeros, pitch_s,
                          zeros, ones, zeros,
                          -pitch_s, zeros, pitch_c], dim=1).view(-1, 3, 3)
 
@@ -141,10 +141,10 @@ def rotate_euler(x, rot):
                        zeros, zeros, ones], dim=1).view(-1, 3, 3)
 
     # Combine rotations
-    R = torch.matmul(yaw, torch.matmul(Pitch, Roll))
+    rotation = torch.matmul(yaw, torch.matmul(pitch, roll))
 
     # Rotate the input point cloud
-    return torch.matmul(x, R.permute(0, 2, 1))
+    return torch.matmul(x, rotation.permute(0, 2, 1))
 
 def project_opengl(x, w, h, fovy=0.5):
     """
@@ -192,7 +192,6 @@ def project_opengl(x, w, h, fovy=0.5):
     a3 = torch.tensor([0, 0, 0.5, 0.5]).view(1,4)
     a4 = torch.tensor([0, 0, 0, 1]).view(1,4)
     viewport_mat = torch.cat((a1, a2, a3, a4), 0)
-
     P = torch.matmul(viewport_mat, projection_mat).unsqueeze(0).expand(batch, viewport_mat.size(0), viewport_mat.size(1))
     homogeneous = torch.cat([x, torch.ones((batch, n_points, 1), dtype=torch.float32)], dim=2)
     projection = torch.matmul(homogeneous, P.permute(0, 2, 1))
@@ -202,20 +201,25 @@ def project_opengl(x, w, h, fovy=0.5):
     w = torch.maximum(torch.abs(w), torch.tensor(1e-6, dtype=torch.float32)) * torch.sign(w)
     projection = projection[:3] / w
     projection = projection.permute(1, 2, 0)
-
     return projection
 
 
-def matplotlib_imshow(img, one_channel=False):
+def matplotlib_imshow(image, one_channel=False):
+    """show image by matplotlib
+    Args:
+        image (_type_): input image
+        one_channel (bool, optional): color channel of input image
+    """
     if one_channel:
-        plt.imshow(img, cmap="Greys")
+        plt.imshow(image, cmap="Greys")
     else:
-        # plt.imshow(np.transpose(img, (1, 2, 0)))
-        plt.imshow(img)
+        plt.imshow(image)
 
-# Define a simple linear regression model with two parameters (alpha and beta)
 class LinearRegressionModel:
-    def __init__(self):
+    """
+    Define a simple linear regression model with two parameters (alpha and beta)
+    """
+    def __init__(self, n_id, n_exp):
         self.alpha = torch.zeros([1, n_id], requires_grad=True)
         self.delta = torch.zeros([1, n_exp], requires_grad=True)
         self.rotation = torch.zeros([1, 3], requires_grad=True)
@@ -228,22 +232,16 @@ class LinearRegressionModel:
         p = rotate_euler(p0, self.rotation) + self.t
         p = project_opengl(p, img.shape[1], img.shape[0])
         return p, p0
-    # def forward(self, pca1):
-    #     t = torch.sum(torch.sum(self.alpha * pca1.std.view(1, -1) * pca1.pc, dim=1))
-    #     print(t.shape)
-    #     return t
-        # return torch.sum(self.alpha)
 
-# 
 def mse_loss(y_true, y_pred):
     """
     Mean Squared Error (MSE) loss function
     Args:
-        y_true (_type_): _description_
-        y_pred (_type_): _description_
+        y_true (_type_): ground truth
+        y_pred (_type_): prediction
 
     Returns:
-        _type_: _description_
+        _type_: mean squared loss
     """
     return torch.mean((y_true - y_pred)**2)
 
@@ -261,9 +259,9 @@ def landmark_loss(predict_lm, gt_lm, weight=None):
         weight[-8:] = 20
         weight = np.expand_dims(weight, 0)
         weight = torch.tensor(weight).to(predict_lm.device)
-    loss = torch.sum((predict_lm - gt_lm)**2, dim=-1) * weight
-    loss = torch.sum(loss) / (predict_lm.shape[0] * predict_lm.shape[1])
-    return loss
+    lm_loss = torch.sum((predict_lm - gt_lm)**2, dim=-1) * weight
+    lm_loss = torch.sum(lm_loss) / (predict_lm.shape[0] * predict_lm.shape[1])
+    return lm_loss
 
 def reg_loss(model, opt=None):
     """
@@ -284,39 +282,32 @@ def reg_loss(model, opt=None):
     creg_loss = w_id * torch.sum(model.alpha ** 2) +  \
            w_exp * torch.sum(model.delta ** 2)
     # creg_loss = creg_loss / coeffs_dict['id'].shape[0]
-
     # gamma regularization to ensure a nearly-monochromatic light
     # gamma = coeffs_dict['gamma'].reshape([-1, 3, 9])
     # gamma_mean = torch.mean(gamma, dim=1, keepdims=True)
     # gamma_loss = torch.mean((gamma - gamma_mean) ** 2)
     return creg_loss
-    
 if __name__ == "__main__":
-
     torch.manual_seed(42)
-    n_id = 80
-    n_exp = 64
+    NUM_ID = 80
+    NUM_EXP = 64
     BFM_MODEL = "model2017-1_face12_nomouth.h5"
-    shape_pca, tex_pca, expr_pca, triangles = load_bfm_model(BFM_MODEL, n_id, n_exp)
+    shape_pca, tex_pca, expr_pca, triangles = load_bfm_model(BFM_MODEL, NUM_ID, NUM_EXP)
     landmark_id = pd.read_csv('Landmarks68_model2017-1_face12_nomouth.anl', header=None).values.flatten().tolist()
-
     img = cv2.imread("1.jpg")
     y_gt = torch.tensor(detect_landmark(img), dtype=torch.float32)
 
     # Initialize the model
-    model = LinearRegressionModel()
-
+    model = LinearRegressionModel(n_id=NUM_ID, n_exp=NUM_EXP)
     # Define the optimizer (Stochastic Gradient Descent)
     optimizer = optim.SGD([model.alpha, model.delta, model.rotation, model.t], lr=0.001,  weight_decay=0.1)
-
     # Training loop
-    num_epochs = 500
+    NUM_EPOCHS = 500
 
-    for epoch in range(num_epochs):
+    for epoch in range(NUM_EPOCHS):
         # Forward pass
         y_pred, ori_shape = model.forward(shape_pca, expr_pca, img)
         # y_pred = model.forward(shape_pca)
-
         # Compute the loss
         # print(y_gt, y_pred)
         reg = reg_loss(model)
@@ -333,14 +324,9 @@ if __name__ == "__main__":
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
         # Print the loss every 100 epochs
         if (epoch + 1) % 10 == 0:
-            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
-            #writer.add_scalar('training loss',
-            #                    loss.item(),
-            #                    epoch + 1)
-            
+            print(f'Epoch [{epoch+1}/{NUM_EPOCHS}], Loss: {loss.item():.4f}')
         if (epoch + 1) % 20 == 0:
             img1 = np.copy(img)
             proj = y_pred.detach().cpu().numpy()[0]
@@ -348,22 +334,11 @@ if __name__ == "__main__":
                 if (0 < p[0] < img.shape[1]) and (0 < p[1] < img.shape[0]):
                     img1[int(p[1])-1:int(p[1])+1, int(p[0])-1:int(p[0])+1] = (255, 0, 0)
             cv2.imwrite("debug/debug%04d.png" % epoch, img1)
-            # fig = plt.figure(figsize=(160, 120))
-            # matplotlib_imshow(img1)
-            # writer.add_figure('predictions',
-            #                    fig,
-            #                    global_step=epoch + 1)
     proj = y_pred.detach().cpu().numpy()[0]
     ori = ori_shape.detach().cpu().numpy()[0]
-
     rgb = []
     for p in proj:
-            rgb.append(img[int(p[1]), int(p[0]),::-1])
-    print("++=")
-    print(proj.shape)
-    print(len(rgb))
-    print(rgb[0])
-    # print(triangles.shape)
+        rgb.append(img[int(p[1]), int(p[0]),::-1])
     rgb = np.asarray(rgb, dtype=np.float32)
     output_mesh = trimesh.base.Trimesh(
             vertices=ori,
@@ -371,7 +346,3 @@ if __name__ == "__main__":
             vertex_colors=rgb)
     output_mesh.export("out.obj")
     output_mesh.show()
-    #writer.close()
-
-    # Print the optimized parameters
-    # print(f'Optimized alpha: {model.alpha.item():.4f}, Optimized beta: {model.delta.item():.4f}')
