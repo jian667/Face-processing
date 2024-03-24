@@ -126,7 +126,6 @@ def rotate_euler(x, rot):
     yaw_s = torch.sin(yaw)
     pitch_s = torch.sin(pitch)
     roll_s = torch.sin(roll)
-
     # Rotation matrices for each axis
     roll = torch.stack([ones, zeros, zeros,
                         zeros, roll_c, -roll_s,
